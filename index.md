@@ -30,7 +30,7 @@
 - 正確な住所や個人を特定することはできない
     - プロバイダーに記録はあるはずなので警察なら調べられる 👮
 
-## 調べてわかったこと(1)
+## 調べてわかったこと
 
 分報窓での情報提供、ありがとうございます m(_ _)m
 
@@ -42,7 +42,7 @@
         - 「s41」はフレッツネクストファミリー
     - [http://wiki.tomocha.net/network_ISP_areasearch.html](http://wiki.tomocha.net/network_ISP_areasearch.html)
 
-## 調べてわかったこと(2)
+## 調べてわかったこと
 
 - IPから地域等の情報を調べるWebサービスはたくさんある
     - 無料で大量のIPを処理できるものは（ぱっと見）無さそう
@@ -108,7 +108,7 @@ q -H -d',' "select ip_rule.network,\
   loc_jp.subdivision_1_name || loc_jp.city_name \
   from ./GeoLite2-City-Blocks-IPv4.csv ip_rule \
   inner join ./loc_db_only_jp.csv loc_jp \
-  on ip_rule.geoname_id = loc_jp.geoname_id" > ip_rule_jp.csv
+  on ip_rule.geoname_id = loc_jp.geoname_id" > ip_block_jp.csv
 ```
 
 ## 
@@ -123,13 +123,14 @@ require 'ipaddr'
 require 'pathname'
 
 ip_file = Pathname.new(ARGV[0])
-rule = CSV.read('ip_rule_jp.csv')
-mapping = rule.map { |(ip_rule, loc)| [IPAddr.new(ip_rule), loc] }
+ip_block_list = CSV.read('ip_block_jp.csv')
+mapping = ip_block_list.map { |(ip_block, loc)| [IPAddr.new(ip_block), loc] }
+mapping.sort_by! { |(ip_block, _)| ip_block.to_s.split('/', 2).last.to_i * -1 }
 
 filename = "#{ip_file.dirname}/#{ip_file.basename('.*')}_with_location#{ip_file.extname}"
 CSV.open(filename, "wb") do |csv|
   CSV.foreach(ip_file) do |(ip)|
-    csv << [ip, mapping.find { |(ip_rule, loc)| ip_rule.include?(ip) }&.last]
+    csv << [ip, mapping.find { |(ip_block, loc)| ip_block.include?(ip) }&.last]
   end
 end
 ```
@@ -163,7 +164,7 @@ IPアドレス100件の処理に20秒くらい。
 
 ```rb
 CSV.foreach(ip_file) do |(ip)|
-  mapping.find { |(ip_rule, loc)| ip_rule.include?(ip) }&.last
+  csv << [ip, mapping.find { |(ip_block, loc)| ip_block.include?(ip) }&.last]
 end
 ```
 
@@ -183,13 +184,15 @@ mappingが約6万件。
 
 ## 高速化
 
-IPアドレスの最初の8bitはマスクしても変わらない。
+IP Blockのマスク値が8より小さいデータは無い。
 
-IPが `123.x.y.z` なら `123.a.b.c/s` のものだけ見ればOK。
+→IPアドレスの最初の8bitはマスクしても変わらない。
+
+→IPが `123.x.y.z` なら `123.a.b.c/m` のものだけ見ればOK。
 
 . . .
 
-数万件の判定 → 平均400、最大5,000件の判定
+数万件の判定 → 数百〜数千件の判定
 
 
 ## 改善後のコード（一部）
@@ -199,12 +202,12 @@ def first_byte(ip)
   ip.to_s.split('.', 2).first
 end
 
-mapping = mapping.group_by { |(ip_rule, loc)| first_byte(ip_rule.to_s) }
+mapping = mapping.group_by { |(ip_block, loc)| first_byte(ip_block.to_s) }
 
 ...
 
 CSV.foreach(ip_file) do |(ip)|
-  csv << [ip, mapping[first_byte(ip)].find { |(ip_rule, loc)| ip_rule.include?(ip) }&.last]
+  csv << [ip, mapping[first_byte(ip)].find { |(ip_block, loc)| ip_block.include?(ip) }&.last]
 end
 
 ...
@@ -225,19 +228,15 @@ end
 
 ## 感想
 
-- MaxMind社さん、無料配布ありがとうございます！
-- 全コード20行以下で書けるの超楽ですね 🐼
+- MaxMind社さん、無料配布ありがとうございます
+- 20行くらいで書けるの超楽ですね 🐼
 - もっと速くできるだろうけど今回はこれで十分かな(´・ω・｀)
 
-## 
+## ちなみに…
 
-- 間違いの指摘や補足
-- より良い方法・サービス・ツール
+依頼自体はケータイのIPが判定できないので流れました。
 
-等ありましたら教えていただけるとありがたいです
-
-m(_ _)m
-
+（GPS情報使うらしいです。）
 
 
 
